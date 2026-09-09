@@ -419,7 +419,16 @@ verify_runtime_tree() {
     [[ $device_help == *"$device"* ]] || die "relocated QEMU is missing device $device"
   done
 
-  netdev_help=$("$qemu" -machine virt -netdev help 2>&1) || \
+  # NO MACHINE MODEL FOR THIS PROBE. `-machine virt` makes QEMU initialise the
+  # default accelerator before it answers `-netdev help`, and on Apple Silicon
+  # that accelerator is the Hypervisor framework. GitHub's macos-15 runners are
+  # themselves VMs with no nested virtualisation, so the probe died with
+  # "HV_UNSUPPORTED (0xfae9400f, at ../target/arm/hvf/hvf.c:1269)" while the
+  # runtime it was checking was fine — MEASURED 2026-09-09, omarchymax macos
+  # run 10, the first run to get this far. The backend list is compile-time
+  # and does not depend on a machine model; every other probe above already
+  # runs without one.
+  netdev_help=$("$qemu" -netdev help 2>&1) || \
     die "relocated QEMU could not enumerate network backends: $netdev_help"
   printf '%s\n' "$netdev_help" | awk '$1 == "user" { found = 1 } END { exit !found }' || \
     die "relocated QEMU is missing the SLIRP user network backend"
