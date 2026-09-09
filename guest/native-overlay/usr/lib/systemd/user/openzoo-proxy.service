@@ -1,0 +1,18 @@
+[Unit]
+Description=openzoo — local x402 pay-per-call proxy on http://localhost:8402/v1
+Documentation=https://openzoo.fun
+After=network-online.target
+
+[Service]
+# Wait for the first-boot bootstrap rather than failing before it has run.
+ExecStartPre=/bin/sh -c 'until [ -x /usr/bin/openzoo ]; do sleep 5; done'
+ExecStart=/usr/bin/openzoo proxy
+# A detached proxy nobody watches must not open a public URL that spends the
+# wallet; localhost only.
+Environment=OPENZOO_NO_TUNNEL=1
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target

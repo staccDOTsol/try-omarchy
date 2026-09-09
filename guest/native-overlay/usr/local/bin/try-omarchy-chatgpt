@@ -1,0 +1,45 @@
+#!/bin/bash
+# OpenAI's ChatGPT desktop app on the zoo. The image cannot ship the app (it
+# is proprietary), so hand this the .deb from https://chatgpt.com/download —
+# a path or a URL — and it is unpacked under ~/.openzoo/apps/chatgpt (no dpkg
+# here) and launched with its Codex side pointed at the local x402 proxy.
+# Pick "sign in with API key" in the app; any key works, the zoo takes
+# payment, not keys. Every other flag is passed to `openzoo chatgpt`.
+set -euo pipefail
+
+if ! command -v openzoo >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+openzoo is not installed yet. The first online boot installs it
+(try-omarchy-openzoo-bootstrap.service); check with:
+  systemctl status try-omarchy-openzoo-bootstrap
+EOF
+  exit 1
+fi
+
+args=()
+while (($#)); do
+  case "$1" in
+    --deb)
+      src=${2:-}
+      [[ -n $src ]] || { echo "--deb needs a file or URL" >&2; exit 2; }
+      shift 2
+      if [[ $src == http://* || $src == https://* ]]; then
+        mkdir -p "$HOME/Downloads"
+        file="$HOME/Downloads/$(basename "${src%%\?*}")"
+        curl -fL --progress-bar -o "$file" "$src"
+        src=$file
+      fi
+      args+=(--deb "$src")
+      ;;
+    *)
+      args+=("$1")
+      shift
+      ;;
+  esac
+done
+
+case "$(uname -m)" in
+  aarch64) echo "note: this guest is arm64 — use the arm64 .deb (chatgpt_arm64.deb)" >&2 ;;
+  x86_64) echo "note: this guest is x86_64 — use the amd64 .deb (chatgpt_amd64.deb)" >&2 ;;
+esac
+exec openzoo chatgpt "${args[@]}"

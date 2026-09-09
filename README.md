@@ -29,6 +29,31 @@ Omarchy's trademark rights.
 
 ## Changes in this fork
 
+### openzoo at first launch
+
+This fork (Omarchy Max, [openzoo.fun/omarchymax](https://openzoo.fun/omarchymax))
+ships with [openzoo](https://github.com/staccDOTsol/openzoo) wired in: on the
+first online boot a root oneshot installs Node and the `openzoo` CLI (the
+locked factory package set is untouched — nothing was added to
+`packages.txt`), every user session then runs a localhost-only x402
+pay-per-call proxy on `http://localhost:8402/v1`, and `~/.codex/config.toml`
+is seeded so the Codex side of OpenAI's ChatGPT desktop app pays per turn
+through it. No account, no API key: pick **sign in with API key** in the app
+and type anything.
+
+The ChatGPT app itself is proprietary and is not in the image. Download the
+arm64 `.deb` from [chatgpt.com/download](https://chatgpt.com/download) inside
+Omarchy, then:
+
+```sh
+try-omarchy-chatgpt --deb ~/Downloads/chatgpt_arm64.deb
+```
+
+It is unpacked under `~/.openzoo/apps/chatgpt` (no dpkg on Arch) and launched
+on the zoo. `openzoo claude`, `openzoo cursor` and the rest work the same way
+once the bootstrap has run (`systemctl status try-omarchy-openzoo-bootstrap`).
+
+
 This fork moves the runtime to QEMU 11.1.1 to pick up Apple's in-hypervisor
 GIC, and fixes two audio problems found along the way.
 

@@ -1,0 +1,24 @@
+#!/bin/bash
+# First-boot openzoo bootstrap: Node and the openzoo CLI, installed ONCE from
+# the network on the first online boot, so the locked factory package set
+# stays exactly what the build verified. The stamp file is the only state; a
+# boot without network simply tries again next time. After this every user
+# session gets a local x402 proxy on :8402 (openzoo-proxy.service), and the
+# seeded ~/.codex/config.toml makes the Codex side of OpenAI's ChatGPT desktop
+# app pay per turn through it.
+set -euo pipefail
+
+stamp=/var/lib/try-omarchy/openzoo-bootstrapped
+[[ -e $stamp ]] && exit 0
+
+if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+  pacman -Sy --needed --noconfirm nodejs npm
+fi
+if ! command -v openzoo >/dev/null 2>&1; then
+  npm install -g --no-fund --no-audit openzoo
+fi
+command -v openzoo >/dev/null 2>&1 || { echo "openzoo did not install" >&2; exit 1; }
+
+mkdir -p "$(dirname "$stamp")"
+: >"$stamp"
+echo "openzoo bootstrap complete: $(command -v openzoo)"

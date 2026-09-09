@@ -1,0 +1,13 @@
+[Unit]
+Description=Install Node and the openzoo x402 proxy on the first online boot
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/var/lib/try-omarchy/openzoo-bootstrapped
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/try-omarchy/openzoo-bootstrap
+TimeoutStartSec=15min
+
+[Install]
+WantedBy=multi-user.target
