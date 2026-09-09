@@ -433,7 +433,7 @@ verify_runtime_tree() {
   printf '%s\n' "$netdev_help" | awk '$1 == "user" { found = 1 } END { exit !found }' || \
     die "relocated QEMU is missing the SLIRP user network backend"
 
-  audio_help=$("$qemu" -machine virt -audiodev help 2>&1) || \
+  audio_help=$("$qemu" -audiodev help 2>&1) || \
     die "relocated QEMU could not enumerate audio backends: $audio_help"
   printf '%s\n' "$audio_help" | awk '$1 == "sdl" { found = 1 } END { exit !found }' || \
     die "relocated QEMU is missing the SDL audio backend"
