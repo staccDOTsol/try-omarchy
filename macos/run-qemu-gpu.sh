@@ -120,18 +120,53 @@ printf '%s\n' "$qemu_help" | grep -Fq 'full-grab=on|off' || {
 printf '%s\n' "$qemu_help" | grep -Fq 'immersive=on|off' || {
   fail "staged QEMU cannot select its fullscreen presentation"
 }
-qemu_netdevs=$("$qemu_bin" -machine virt -netdev help 2>&1) || {
+# BACKEND PROBES THAT SURVIVE A HOST WITH NO HYPERVISOR.
+#
+# The staged QEMU is --enable-hvf --disable-tcg, so `-machine virt` makes it
+# initialise the Hypervisor framework before it answers `-netdev help`, and
+# `-netdev help` with no machine at all is refused. On a real Mac that is
+# fine. On GitHub's macos-15 runners — VMs without nested virtualisation —
+# this line killed the packaging step with HV_UNSUPPORTED while the QEMU it
+# was inspecting was correct (MEASURED 2026-09-09, omarchymax macos run 13,
+# the first run to reach packaging). The normal probe is tried first so the
+# contract test's stub (Tests/run-qemu-ssh-contract.test.sh) and every real
+# machine see exactly what they saw before; only when the hypervisor is what
+# is missing does it retry under the qtest accelerator, which needs none, and
+# only if that cannot answer either does it fall back to the binary's own
+# strings for the one backend asserted.
+staged_backends() {
+  local option=$1 out
+  if out=$("$qemu_bin" -machine virt -"$option" help 2>&1); then printf '%s\n' "$out"; return 0; fi
+  if [[ $out == *HV_UNSUPPORTED* || $out == *hv_vm_create* || $out == *Hypervisor* ]]; then
+    if out=$("$qemu_bin" -machine none -accel qtest -"$option" help 2>&1); then printf '%s\n' "$out"; return 0; fi
+    return 2
+  fi
+  return 1
+}
+rc=0; qemu_netdevs=$(staged_backends netdev) || rc=$?
+if (( rc == 0 )); then
+  printf '%s\n' "$qemu_netdevs" | grep -qx 'user' || {
+    fail "staged QEMU does not provide no-root SLIRP networking; run make runtime"
+  }
+elif (( rc == 2 )); then
+  LC_ALL=C grep -aFq 'slirp' "$qemu_bin" || {
+    fail "staged QEMU does not provide no-root SLIRP networking (string check; no hypervisor on this host); run make runtime"
+  }
+else
   fail "cannot inspect staged QEMU network backends"
-}
-printf '%s\n' "$qemu_netdevs" | grep -qx 'user' || {
-  fail "staged QEMU does not provide no-root SLIRP networking; run make runtime"
-}
-qemu_audiodevs=$("$qemu_bin" -machine virt -audiodev help 2>&1) || {
+fi
+rc=0; qemu_audiodevs=$(staged_backends audiodev) || rc=$?
+if (( rc == 0 )); then
+  printf '%s\n' "$qemu_audiodevs" | grep -qx 'sdl' || {
+    fail "staged QEMU does not provide SDL audio; run make runtime"
+  }
+elif (( rc == 2 )); then
+  LC_ALL=C grep -aFq 'libSDL' "$qemu_bin" || {
+    fail "staged QEMU does not provide SDL audio (string check; no hypervisor on this host); run make runtime"
+  }
+else
   fail "cannot inspect staged QEMU audio backends"
-}
-printf '%s\n' "$qemu_audiodevs" | grep -qx 'sdl' || {
-  fail "staged QEMU does not provide duplex SDL audio; run make runtime"
-}
+fi
 
 require_qemu_device() {
   local device=$1
