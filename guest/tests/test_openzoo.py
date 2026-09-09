@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Contracts for the openzoo first-boot seed.
+"""Contracts for the openzoo boot seed.
 
-The factory package set is locked, so openzoo arrives on the first online
-boot through a root oneshot, never through packages.txt. Every user session
-then gets a local x402 proxy and a Codex provider that points OpenAI's ChatGPT
+The factory package set is locked, so openzoo arrives through a root oneshot,
+never through packages.txt. That oneshot runs on every online boot and installs
+`openzoo@latest`, so an image installed months ago upgrades itself instead of
+freezing at the version npm served on its first boot. Every user session then
+gets a local x402 proxy and a Codex provider that points OpenAI's ChatGPT
 desktop app at it. These tests pin the pieces that make that true without
 booting anything.
 """
@@ -55,12 +57,30 @@ class OpenzooSeedTests(unittest.TestCase):
         self.assertIn("npm install -g", text)
         self.assertIn("/var/lib/try-omarchy/openzoo-bootstrapped", text)
 
-    def test_bootstrap_unit_runs_once_after_network(self) -> None:
+    def test_bootstrap_upgrades_openzoo_on_every_boot(self) -> None:
+        text = BOOTSTRAP.read_text(encoding="utf-8")
+        # @latest is what turns the boot-time install into an upgrade: npm
+        # replaces an older global openzoo and no-ops when it is current.
+        self.assertIn("openzoo@latest", text)
+        # The stamp records that the CLI is present; it must not gate the run,
+        # or the guest freezes at whatever npm served on the first boot.
+        self.assertNotRegex(text, r"(?m)^\[\[ -e \$stamp \]\] && exit 0$")
+        # A hung registry must not hold the boot open on its own.
+        self.assertRegex(text, r"timeout \S+ npm install")
+        # An upgrade that cannot reach the registry keeps the version already
+        # installed instead of failing the boot.
+        self.assertIn("had_openzoo", text)
+
+    def test_bootstrap_unit_runs_on_every_online_boot(self) -> None:
         fields = unit_fields(BOOTSTRAP_UNIT.read_text(encoding="utf-8"))
         self.assertEqual(fields["Type"], ["oneshot"])
         self.assertEqual(fields["ExecStart"], ["/usr/local/lib/try-omarchy/openzoo-bootstrap"])
         self.assertIn("network-online.target", fields["After"][0])
-        self.assertEqual(fields["ConditionPathExists"], ["!/var/lib/try-omarchy/openzoo-bootstrapped"])
+        self.assertIn("network-online.target", fields["Wants"][0])
+        self.assertEqual(fields["TimeoutStartSec"], ["15min"])
+        # No stamp condition: the unit must run again on later boots so the
+        # openzoo CLI picks up fixes released after the image was installed.
+        self.assertNotIn("ConditionPathExists", fields)
         self.assertEqual(fields["WantedBy"], ["multi-user.target"])
 
     def test_proxy_unit_is_localhost_only_and_waits_for_bootstrap(self) -> None:

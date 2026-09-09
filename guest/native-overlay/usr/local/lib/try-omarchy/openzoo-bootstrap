@@ -1,24 +1,44 @@
 #!/bin/bash
-# First-boot openzoo bootstrap: Node and the openzoo CLI, installed ONCE from
-# the network on the first online boot, so the locked factory package set
-# stays exactly what the build verified. The stamp file is the only state; a
-# boot without network simply tries again next time. After this every user
-# session gets a local x402 proxy on :8402 (openzoo-proxy.service), and the
-# seeded ~/.codex/config.toml makes the Codex side of OpenAI's ChatGPT desktop
-# app pay per turn through it.
+# openzoo bootstrap: Node and the openzoo CLI, installed and kept current from
+# the network at boot, so the locked factory package set stays exactly what the
+# build verified (nothing was added to packages.txt). This runs on EVERY online
+# boot, not once: it installs `openzoo@latest`, which upgrades when npm has
+# something newer and is a no-op otherwise, so a machine installed months ago
+# receives openzoo fixes instead of freezing at whatever the registry served on
+# its first boot. The stamp file records that the CLI is present — other units
+# and the first-launch gate wait on it — but it no longer suppresses the run. A
+# boot without network keeps the version already installed and tries again next
+# time. After this every user session gets a local x402 proxy on :8402
+# (openzoo-proxy.service), and the seeded ~/.codex/config.toml makes the Codex
+# side of OpenAI's ChatGPT desktop app pay per turn through it.
 set -euo pipefail
 
 stamp=/var/lib/try-omarchy/openzoo-bootstrapped
-[[ -e $stamp ]] && exit 0
 
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
   pacman -Sy --needed --noconfirm nodejs npm
 fi
-if ! command -v openzoo >/dev/null 2>&1; then
-  npm install -g --no-fund --no-audit openzoo
+
+had_openzoo=0
+if command -v openzoo >/dev/null 2>&1; then
+  had_openzoo=1
+fi
+
+# Bounded so a hung or unreachable registry cannot hold the boot open until the
+# unit's own TimeoutStartSec kills it.
+if ! timeout 10m npm install -g --no-fund --no-audit openzoo@latest; then
+  if ((had_openzoo)); then
+    echo "openzoo@latest unavailable (offline or registry down); keeping the installed version" >&2
+  else
+    echo "openzoo did not install" >&2
+    exit 1
+  fi
 fi
 command -v openzoo >/dev/null 2>&1 || { echo "openzoo did not install" >&2; exit 1; }
 
 mkdir -p "$(dirname "$stamp")"
 : >"$stamp"
-echo "openzoo bootstrap complete: $(command -v openzoo)"
+
+version=$(openzoo --version 2>/dev/null | head -n1 || true)
+[[ -n $version ]] || version=$(npm ls -g openzoo --depth=0 2>/dev/null | sed -n 's/.*\(openzoo@[^ ]*\).*/\1/p' | head -n1 || true)
+echo "openzoo bootstrap complete: $(command -v openzoo) ${version:-version unknown}"

@@ -32,14 +32,16 @@ Omarchy's trademark rights.
 ### openzoo at first launch
 
 This fork (Omarchy Max, [openzoo.fun/omarchymax](https://openzoo.fun/omarchymax))
-ships with [openzoo](https://github.com/staccDOTsol/openzoo) wired in: on the
-first online boot a root oneshot installs Node and the `openzoo` CLI (the
+ships with [openzoo](https://github.com/staccDOTsol/openzoo) wired in: a root
+oneshot installs Node and the `openzoo` CLI on the first online boot (the
 locked factory package set is untouched — nothing was added to
-`packages.txt`), every user session then runs a localhost-only x402
-pay-per-call proxy on `http://localhost:8402/v1`, and `~/.codex/config.toml`
-is seeded so the Codex side of OpenAI's ChatGPT desktop app pays per turn
-through it. No account, no API key: pick **sign in with API key** in the app
-and type anything.
+`packages.txt`) and runs again on every later online boot to install
+`openzoo@latest`, so the CLI picks up fixes released after the image was
+installed instead of freezing at whatever npm served the first time. Every
+user session then runs a localhost-only x402 pay-per-call proxy on
+`http://localhost:8402/v1`, and `~/.codex/config.toml` is seeded so the Codex
+side of OpenAI's ChatGPT desktop app pays per turn through it. No account, no
+API key: pick **sign in with API key** in the app and type anything.
 
 The ChatGPT app itself is proprietary and is not in the image. Download the
 arm64 `.deb` from [chatgpt.com/download](https://chatgpt.com/download) inside
