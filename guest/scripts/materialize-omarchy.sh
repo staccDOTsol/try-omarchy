@@ -95,14 +95,14 @@ copy_tree() {
   local to=$2
   rm -rf "$to"
   mkdir -p "$(dirname "$to")"
-  cp -a "$from" "$to"
+  cp -a --no-preserve=ownership "$from" "$to"
 }
 
 copy_contents() {
   local from=$1
   local to=$2
   mkdir -p "$to"
-  cp -a "$from/." "$to/"
+  cp -a --no-preserve=ownership "$from/." "$to/"
 }
 
 install_file() {

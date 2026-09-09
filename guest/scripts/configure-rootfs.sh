@@ -57,7 +57,16 @@ profile=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["guest
 [[ $profile == factory ]] || fail "native guest profile must be factory"
 
 mkdir -p "$root/etc" "$root/etc/skel" "$root/usr/share/try-omarchy"
-cp -a "$guest_dir/factory-overlay/." "$root/"
+# OWNERSHIP COMES FROM THE ROOTFS, NEVER FROM THE CHECKOUT. `cp -a` preserves
+# the source owner, and applies it to destination directories that ALREADY
+# EXIST — so /usr, /usr/bin and /usr/share in the staged root took the uid of
+# whoever cloned this repository. On a developer box that is root and nothing
+# shows; in CI it is the runner user, and the guest would have shipped with
+# /usr owned by uid 1001. Only Hyprland's package carries a full mtree, so only
+# its `pacman -Qkk` noticed: "UID mismatch" on exactly those three directories
+# (MEASURED 2026-09-09, omarchymax macos run 8). Modes and timestamps are still
+# preserved; ownership is whatever the build runs as, which is root.
+cp -a --no-preserve=ownership "$guest_dir/factory-overlay/." "$root/"
 
 # Session-config customizations are additive, so each fragment remains
 # independently auditable against Basecamp's pinned config. The native overlay
@@ -68,7 +77,8 @@ cp -a "$guest_dir/factory-overlay/." "$root/"
 # QEMU changes the virtual EDID.
 # The clipboard bridge mirrors the Mac pasteboard into the Wayland session,
 # and the Mac folder mount completes the host integration.
-cp -a "$guest_dir/native-overlay/." "$root/"
+# Same rule as the factory overlay above: never the checkout's owner.
+cp -a --no-preserve=ownership "$guest_dir/native-overlay/." "$root/"
 "$guest_dir/scripts/install-touch-id-sudo.sh" \
   --root "$root" \
   --guest-dir "$guest_dir"
