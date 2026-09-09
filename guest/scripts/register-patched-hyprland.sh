@@ -765,6 +765,10 @@ PY
 # Rebuild pacman's full-file integrity index after replacing the executable and
 # public headers. Normalizing every input timestamp keeps the mtree reproducible
 # while allowing `pacman -Qkk` to verify hashes, modes, sizes, and ownership.
+# The package archive is written with --owner=0 --group=0, so the mtree must
+# record the same ownership or every entry it describes disagrees with the file
+# pacman actually installs.
+chown -h -R 0:0 "$package_root"
 find "$package_root" -exec touch -h -d "@$source_date_epoch" {} +
 (
   cd "$package_root"
@@ -808,8 +812,21 @@ pacman \
 query=$(pacman --config "$pacman_config" --root "$root" --dbpath "$root/var/lib/pacman" -Q "$package_name")
 [[ $query == "$package_name $package_version" ]] ||
   fail "patched Hyprland package was not installed: $query"
-pacman --config "$pacman_config" --root "$root" --dbpath "$root/var/lib/pacman" -Qkk "$package_name" >/dev/null ||
+if ! integrity_report=$(pacman --config "$pacman_config" --root "$root" \
+  --dbpath "$root/var/lib/pacman" -Qkk "$package_name" 2>&1); then
+  # -Qkk names the path and the keyword that disagreed; without them the failure
+  # says only that something did, which is not enough to fix a packaging bug.
+  printf '%s\n' "$integrity_report" >&2
+  printf '%s\n' "$integrity_report" |
+    sed -n 's/^[^:]*: \(.*\) (\(UID\|GID\|Permissions\|Modification time\|Size\|MD5\|SHA256\) .*/\1/p' |
+    sort -u |
+    while IFS= read -r mismatched; do
+      stat -c 'installed %n uid=%u gid=%g mode=%a' "$mismatched" >&2 || true
+      stat -c 'packaged  %n uid=%u gid=%g mode=%a' \
+        "$package_root/${mismatched#"$root"/}" >&2 || true
+    done
   fail "installed Hyprland package failed its ownership check"
+fi
 verify_file "$built_binary_sha256" "$root/usr/bin/Hyprland" || fail "installed Hyprland binary digest mismatch"
 for header in "${header_paths[@]}"; do
   cmp -s "$source_root/$header" "$root/usr/include/hyprland/$header" ||
