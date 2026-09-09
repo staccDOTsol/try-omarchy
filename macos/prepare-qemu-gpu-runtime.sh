@@ -419,24 +419,57 @@ verify_runtime_tree() {
     [[ $device_help == *"$device"* ]] || die "relocated QEMU is missing device $device"
   done
 
-  # NO MACHINE MODEL FOR THIS PROBE. `-machine virt` makes QEMU initialise the
-  # default accelerator before it answers `-netdev help`, and on Apple Silicon
-  # that accelerator is the Hypervisor framework. GitHub's macos-15 runners are
-  # themselves VMs with no nested virtualisation, so the probe died with
-  # "HV_UNSUPPORTED (0xfae9400f, at ../target/arm/hvf/hvf.c:1269)" while the
-  # runtime it was checking was fine — MEASURED 2026-09-09, omarchymax macos
-  # run 10, the first run to get this far. The backend list is compile-time
-  # and does not depend on a machine model; every other probe above already
-  # runs without one.
-  netdev_help=$("$qemu" -netdev help 2>&1) || \
-    die "relocated QEMU could not enumerate network backends: $netdev_help"
-  printf '%s\n' "$netdev_help" | awk '$1 == "user" { found = 1 } END { exit !found }' || \
-    die "relocated QEMU is missing the SLIRP user network backend"
+  # BACKEND ENUMERATION WITHOUT A HYPERVISOR.
+  #
+  # This QEMU is built --enable-hvf --disable-tcg, so ANY machine model makes
+  # it initialise Apple's Hypervisor framework before it answers a `help`
+  # query, and `-netdev help` refuses to run with no machine at all ("No
+  # machine specified, and there is no default"). GitHub's macos-15 runners
+  # are VMs without nested virtualisation, so on them the probe died with
+  # HV_UNSUPPORTED (0xfae9400f, hvf.c:1269) while the runtime it was checking
+  # was fine — MEASURED 2026-09-09, omarchymax macos runs 10-12, the first
+  # runs to get this far.
+  #
+  # So: ask the normal way first (a real Mac answers). If the failure is the
+  # hypervisor being absent, retry under the qtest accelerator, which every
+  # QEMU carries and which needs no hypervisor. If even that cannot answer,
+  # fall back to the binary's own strings for the one backend each probe
+  # asserts — weaker than a live enumeration, and said so in the log, but
+  # not weaker than shipping nothing.
+  probe_backends() {
+    local option=$1 out
+    if out=$("$qemu" -machine virt -"$option" help 2>&1); then printf '%s\n' "$out"; return 0; fi
+    if [[ $out == *HV_UNSUPPORTED* || $out == *hv_vm_create* || $out == *"Hypervisor"* ]]; then
+      if out=$("$qemu" -machine none -accel qtest -"$option" help 2>&1); then printf '%s\n' "$out"; return 0; fi
+      echo "qemu-gpu-runtime: no Hypervisor support on this host; -$option help cannot run here ($out)" >&2
+      return 2
+    fi
+    printf '%s\n' "$out"; return 1
+  }
 
-  audio_help=$("$qemu" -audiodev help 2>&1) || \
+  rc=0; netdev_help=$(probe_backends netdev) || rc=$?
+  if (( rc == 0 )); then
+    printf '%s\n' "$netdev_help" | awk '$1 == "user" { found = 1 } END { exit !found }' || \
+      die "relocated QEMU is missing the SLIRP user network backend"
+  elif (( rc == 2 )); then
+    LC_ALL=C grep -aFq 'libslirp' "$qemu" || LC_ALL=C grep -aFq 'slirp' "$qemu" || \
+      die "relocated QEMU is missing the SLIRP user network backend (string check; no hypervisor on this host)"
+    echo "qemu-gpu-runtime: SLIRP user network backend verified by string check (no hypervisor on this host)" >&2
+  else
+    die "relocated QEMU could not enumerate network backends: $netdev_help"
+  fi
+
+  rc=0; audio_help=$(probe_backends audiodev) || rc=$?
+  if (( rc == 0 )); then
+    printf '%s\n' "$audio_help" | awk '$1 == "sdl" { found = 1 } END { exit !found }' || \
+      die "relocated QEMU is missing the SDL audio backend"
+  elif (( rc == 2 )); then
+    LC_ALL=C grep -aFq 'SDL_OpenAudioDevice' "$qemu" || LC_ALL=C grep -aFq 'libSDL' "$qemu" || \
+      die "relocated QEMU is missing the SDL audio backend (string check; no hypervisor on this host)"
+    echo "qemu-gpu-runtime: SDL audio backend verified by string check (no hypervisor on this host)" >&2
+  else
     die "relocated QEMU could not enumerate audio backends: $audio_help"
-  printf '%s\n' "$audio_help" | awk '$1 == "sdl" { found = 1 } END { exit !found }' || \
-    die "relocated QEMU is missing the SDL audio backend"
+  fi
 
   for marker in \
     OMARCHY_SDL_AUDIO_CONTROL_DIRECTORY \
