@@ -573,14 +573,20 @@ hyprland = exact_keys(
 exact_keys(
     hyprland.get("buildPackages"),
     {
+        "aquamarine",
         "base-devel",
         "binutils",
         "cmake",
         "gcc",
         "gcc-libs",
         "glibc",
-        "hyprland",
+        "hyprcursor",
+        "hyprgraphics",
         "hyprland-protocols",
+        "hyprlang",
+        "hyprutils",
+        "hyprwayland-scanner",
+        "hyprwire",
         "make",
         "meson",
         "ninja",
@@ -592,7 +598,7 @@ exact_keys(
 hyprland_identity = hashlib.sha256(
     json.dumps(hyprland, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("utf-8")
 ).hexdigest()
-if hyprland_identity != "edd58c17fc115b375d8e8b9b5eb7eb78008e89c05867b3ed2f2834287badcae8":
+if hyprland_identity != "8dff58b8a48be5603c98c72252f38b8b92fcf674b82e8e4b00101d7d84172e42":
     fail("factory Hyprland component is not the reviewed rounded-border build")
 mise = exact_keys(
     supply_chain.get("mise"),

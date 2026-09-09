@@ -35,6 +35,17 @@ repository. `scripts/register-patched-hyprland.sh` owns the reproducible package
 build, and `tests/test_rounded_border_coverage.py` owns its focused regression
 model.
 
+`packages.txt` deliberately does not request `hyprland`: Arch Linux ARM rebuilds
+the compositor's ABI dependencies (aquamarine, hyprutils, ...) on its own
+schedule, and its prebuilt Hyprland package can be temporarily uninstallable
+against them (for example `libaquamarine.so=13-64` after aquamarine 0.15 moved
+to `.so=14`). The transaction stages Hyprland's dependency closure explicitly,
+the builder installs the same ABI set pinned under
+`supplyChain.hyprland.buildPackages`, and the patched package's soname
+dependencies are rewritten from the built executable's `DT_NEEDED` entries.
+When Arch Linux ARM moves one of those libraries, move the matching
+`buildPackages` pin, the lock, and `binarySha256` together.
+
 When updating Hyprland, first test the unpatched package through the same
 Virtio/VirGL guest path. Remove the local patch and package hold if upstream is
 clean; otherwise rebase the patch and update every source, patch, toolchain,

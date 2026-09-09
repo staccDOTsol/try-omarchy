@@ -6,9 +6,11 @@ usage() {
   cat <<'USAGE'
 Usage: register-patched-hyprland.sh --root ROOT --work WORK --spec SPEC --pacman-config CONFIG
 
-Builds the spec-pinned rounded-border Hyprland backport natively for ARM64,
-repackages the verified upstream Arch package with the patched executable and
-public headers, and registers it in the guest's immutable package repository.
+Builds the spec-pinned rounded-border Hyprland backport natively for ARM64
+against the pinned Arch Linux ARM ABI set, repackages the verified upstream
+Arch package with the patched executable, public headers, and the linked
+shared-library dependencies, and registers it in the guest's immutable package
+repository. The upstream prebuilt package is fetched only as packaging input.
 USAGE
 }
 
@@ -193,7 +195,7 @@ build_packages_json=${metadata[21]}
 [[ $architecture == aarch64 ]] || fail "patched Hyprland supports only aarch64"
 [[ $(uname -m) == aarch64 ]] || fail "patched Hyprland must be built natively on aarch64"
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid Hyprland version: $version"
-[[ $pkgrel == 3.2 ]] || fail "unexpected Hyprland package release: $pkgrel"
+[[ $pkgrel == 3.3 ]] || fail "unexpected Hyprland package release: $pkgrel"
 [[ $upstream_package_version == "$version-3" ]] || fail "unexpected upstream Hyprland package version"
 [[ $repository == https://github.com/hyprwm/Hyprland ]] || fail "unexpected Hyprland repository"
 [[ $url == "$repository/releases/download/v$version/source-v$version.tar.gz" ]] ||
@@ -358,14 +360,20 @@ import sys
 
 packages = json.loads(sys.argv[1])
 expected = {
+    "aquamarine",
     "base-devel",
     "binutils",
     "cmake",
     "gcc",
     "gcc-libs",
     "glibc",
-    "hyprland",
+    "hyprcursor",
+    "hyprgraphics",
     "hyprland-protocols",
+    "hyprlang",
+    "hyprutils",
+    "hyprwayland-scanner",
+    "hyprwire",
     "make",
     "meson",
     "ninja",
@@ -378,7 +386,7 @@ for name in sorted(packages):
     print(f"{name}|{packages[name]}")
 PY
 )
-(( ${#build_package_records[@]} == 13 )) || fail "unexpected Hyprland buildPackages set"
+(( ${#build_package_records[@]} == 19 )) || fail "unexpected Hyprland buildPackages set"
 build_package_specs=()
 for record in "${build_package_records[@]}"; do
   IFS='|' read -r package package_version extra <<<"$record"
@@ -417,6 +425,83 @@ chmod 0600 "$builder_pacman_config"
 # move. Refresh them here so an unchanged pinned version is downloaded from its
 # current repository path instead of producing mirror-wide 404 responses.
 pacman -Syy --noconfirm --config "$builder_pacman_config"
+
+# Arch Linux ARM rebuilds Hyprland's ABI dependencies on its own schedule, so
+# its prebuilt Hyprland can be uninstallable against its own repositories (its
+# 0.56.1-3 still requires libaquamarine.so=13-64 after aquamarine 0.15 moved the
+# library to .so=14). The prebuilt package is therefore never installed on the
+# builder or in the guest: only its archive is fetched, with libalpm's
+# dependency check skipped, and the spec's digest authenticates it. Its recorded
+# dependency list stages the build inputs, and the reviewed ABI set pinned in
+# buildPackages is installed on exact versions afterwards.
+package_cache="$work/pacman-cache"
+[[ -d $package_cache ]] || fail "signed pacman cache is missing: $package_cache"
+pacman --noconfirm --config "$builder_pacman_config" -Sddw "hyprland=$upstream_package_version"
+upstream_candidates=()
+for extension in xz zst; do
+  candidate="$package_cache/hyprland-$upstream_package_version-aarch64.pkg.tar.$extension"
+  [[ -e $candidate ]] || continue
+  [[ -f $candidate && ! -L $candidate ]] || fail "unsafe upstream package cache entry: $candidate"
+  upstream_candidates+=("$candidate")
+done
+(( ${#upstream_candidates[@]} == 1 )) ||
+  fail "expected one cached upstream Hyprland package, found ${#upstream_candidates[@]}"
+upstream_package=${upstream_candidates[0]}
+verify_file "$upstream_package_sha256" "$upstream_package" || fail "upstream package digest mismatch"
+
+upstream_tar="$stage/upstream-hyprland.tar"
+case "$upstream_package" in
+  *.pkg.tar.xz)
+    xz --decompress --stdout "$upstream_package" >"$upstream_tar"
+    ;;
+  *.pkg.tar.zst)
+    zstd --decompress --stdout "$upstream_package" >"$upstream_tar"
+    ;;
+  *)
+    fail "unsupported upstream Hyprland package compression"
+    ;;
+esac
+[[ -s $upstream_tar && ! -L $upstream_tar ]] || fail "could not decompress upstream Hyprland package"
+
+mapfile -t upstream_dependencies < <(python3 - "$upstream_tar" <<'PY'
+import re
+import sys
+import tarfile
+
+with tarfile.open(sys.argv[1], "r:") as package:
+    pkginfo = package.extractfile(package.getmember(".PKGINFO"))
+    if pkginfo is None:
+        raise SystemExit(1)
+    names = []
+    for raw_line in pkginfo.read().decode("utf-8").splitlines():
+        key, separator, value = raw_line.partition(" = ")
+        if not separator or key != "depend":
+            continue
+        # Shared-library dependencies (libfoo.so=N-64) are satisfied by the
+        # packages named alongside them; the ABI they resolve to is pinned
+        # separately through buildPackages.
+        if re.fullmatch(r"[A-Za-z0-9@._+-]+\.so=[0-9]+-(32|64)", value):
+            continue
+        name = re.split(r"[<>=]", value, 1)[0]
+        if not re.fullmatch(r"[a-z0-9@._+-]+", name):
+            raise SystemExit(1)
+        names.append(name)
+if not names:
+    raise SystemExit(1)
+print("\n".join(dict.fromkeys(names)))
+PY
+) || fail "could not read the upstream Hyprland dependency list"
+(( ${#upstream_dependencies[@]} > 0 )) || fail "upstream Hyprland package declares no dependencies"
+# Virtual dependencies (opengl-driver) are provided by literal packages in the
+# same list; install only the literal packages so no provider is chosen blindly.
+literal_dependencies=()
+for name in "${upstream_dependencies[@]}"; do
+  if pacman --config "$builder_pacman_config" -Si "$name" >/dev/null 2>&1; then
+    literal_dependencies+=("$name")
+  fi
+done
+(( ${#literal_dependencies[@]} > 0 )) || fail "upstream Hyprland package names no literal dependencies"
+pacman --noconfirm --config "$builder_pacman_config" -S --needed --asdeps "${literal_dependencies[@]}"
 pacman --noconfirm --config "$builder_pacman_config" -S --needed "${build_package_specs[@]}"
 for command in cmake cmp readelf strip; do
   command -v "$command" >/dev/null || fail "$command is missing after installing Hyprland build packages"
@@ -430,9 +515,9 @@ if pacman -Q glaze >/dev/null 2>&1; then
   fail "unpinned system Glaze would bypass the verified source extraction"
 fi
 
-upstream_query=$(pacman --config "$pacman_config" --root "$root" --dbpath "$root/var/lib/pacman" -Q hyprland)
-[[ $upstream_query == "hyprland $upstream_package_version" ]] ||
-  fail "staged root does not contain the expected upstream Hyprland package: $upstream_query"
+if pacman --config "$pacman_config" --root "$root" --dbpath "$root/var/lib/pacman" -Q hyprland >/dev/null 2>&1; then
+  fail "staged root already contains an unpatched Hyprland package"
+fi
 
 export SOURCE_DATE_EPOCH="$source_date_epoch"
 export CFLAGS="-ffile-prefix-map=$stage=/usr/src/try-omarchy-hyprland -fdebug-prefix-map=$stage=/usr/src/try-omarchy-hyprland"
@@ -480,34 +565,6 @@ built_binary_sha256=$(sha256sum "$built_binary")
 built_binary_sha256=${built_binary_sha256%% *}
 [[ $built_binary_sha256 == "$binary_sha256" ]] ||
   fail "Hyprland reproducible binary digest mismatch: $built_binary_sha256"
-
-package_cache="$work/pacman-cache"
-[[ -d $package_cache ]] || fail "signed pacman cache is missing: $package_cache"
-upstream_candidates=()
-for extension in xz zst; do
-  candidate="$package_cache/hyprland-$upstream_package_version-aarch64.pkg.tar.$extension"
-  [[ -e $candidate ]] || continue
-  [[ -f $candidate && ! -L $candidate ]] || fail "unsafe upstream package cache entry: $candidate"
-  upstream_candidates+=("$candidate")
-done
-(( ${#upstream_candidates[@]} == 1 )) ||
-  fail "expected one cached upstream Hyprland package, found ${#upstream_candidates[@]}"
-upstream_package=${upstream_candidates[0]}
-verify_file "$upstream_package_sha256" "$upstream_package" || fail "upstream package digest mismatch"
-
-upstream_tar="$stage/upstream-hyprland.tar"
-case "$upstream_package" in
-  *.pkg.tar.xz)
-    xz --decompress --stdout "$upstream_package" >"$upstream_tar"
-    ;;
-  *.pkg.tar.zst)
-    zstd --decompress --stdout "$upstream_package" >"$upstream_tar"
-    ;;
-  *)
-    fail "unsupported upstream Hyprland package compression"
-    ;;
-esac
-[[ -s $upstream_tar && ! -L $upstream_tar ]] || fail "could not decompress upstream Hyprland package"
 
 python3 - "$upstream_tar" "$upstream_package_version" "$license" <<'PY' || fail "upstream Hyprland package has an unsafe member set"
 import pathlib
@@ -624,13 +681,28 @@ cmp -s "$glaze_license" "$package_root/usr/share/licenses/hyprland/LICENSE.glaze
 rm -f -- "$package_root/.BUILDINFO" "$package_root/.MTREE"
 installed_size=$(du -sb "$package_root/usr" | awk '{print $1}')
 [[ $installed_size =~ ^[1-9][0-9]*$ ]] || fail "could not determine patched Hyprland installed size"
+# The upstream metadata records the shared-library ABI its own executable was
+# linked against. Ours is linked against the pinned ABI set actually staged in
+# the guest, so every libfoo.so=N-64 dependency is rewritten from the built
+# executable's DT_NEEDED entries; dependencies the executable does not load
+# (hyprctl and hyprpm are retained from upstream) keep their upstream values.
+built_needed=$(readelf -d "$built_binary" | awk '/\(NEEDED\)/ { gsub(/[][]/, "", $NF); print $NF }')
+[[ -n $built_needed ]] || fail "could not read the built Hyprland shared-library dependencies"
 python3 - "$package_root/.PKGINFO" "$version-$pkgrel" "$repository" "$source_date_epoch" \
-  "$installed_size" "$license" <<'PY' || fail "could not adapt upstream Hyprland package metadata"
+  "$installed_size" "$license" "$built_needed" <<'PY' || fail "could not adapt upstream Hyprland package metadata"
 import pathlib
+import re
 import sys
 
 path = pathlib.Path(sys.argv[1])
-package_version, repository, build_date, installed_size, expected_license = sys.argv[2:]
+package_version, repository, build_date, installed_size, expected_license, built_needed = sys.argv[2:]
+needed_versions = {}
+for entry in built_needed.splitlines():
+    match = re.fullmatch(r"([A-Za-z0-9@._+-]+\.so)\.([0-9]+)(?:\.[0-9.]+)?", entry)
+    if match is not None:
+        needed_versions[match.group(1)] = match.group(2)
+if not needed_versions:
+    raise SystemExit(1)
 fields = {}
 for raw_line in path.read_text().splitlines():
     if not raw_line or raw_line.startswith("#"):
@@ -668,9 +740,20 @@ lines = [
     "arch = aarch64",
     f"license = {expected_license}",
 ]
+rewritten = []
 for key in ("group", "provides", "conflict", "replaces", "depend", "optdepend", "backup"):
-    lines.extend(f"{key} = {value}" for value in fields.get(key, []))
+    for value in fields.get(key, []):
+        if key == "depend":
+            match = re.fullmatch(r"([A-Za-z0-9@._+-]+\.so)=([0-9]+)-(32|64)", value)
+            if match is not None and match.group(1) in needed_versions:
+                linked = f"{match.group(1)}={needed_versions[match.group(1)]}-{match.group(3)}"
+                if linked != value:
+                    rewritten.append(f"{value} -> {linked}")
+                value = linked
+        lines.append(f"{key} = {value}")
 path.write_text("\n".join(lines) + "\n")
+for change in rewritten:
+    print(f"rewrote shared-library dependency {change}", file=sys.stderr)
 PY
 
 # Rebuild pacman's full-file integrity index after replacing the executable and
@@ -717,8 +800,8 @@ pacman \
   -U "$package_archive"
 
 query=$(pacman --config "$pacman_config" --root "$root" --dbpath "$root/var/lib/pacman" -Q "$package_name")
-[[ $query == "$package_name $package_version" && $query != "$upstream_query" ]] ||
-  fail "upstream Hyprland package was not replaced: $query"
+[[ $query == "$package_name $package_version" ]] ||
+  fail "patched Hyprland package was not installed: $query"
 pacman --config "$pacman_config" --root "$root" --dbpath "$root/var/lib/pacman" -Qkk "$package_name" >/dev/null ||
   fail "installed Hyprland package failed its ownership check"
 verify_file "$built_binary_sha256" "$root/usr/bin/Hyprland" || fail "installed Hyprland binary digest mismatch"
