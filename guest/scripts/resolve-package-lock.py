@@ -47,7 +47,18 @@ def main() -> None:
         check=False,
     )
     if result.returncode:
-        raise SystemExit(result.stderr or result.stdout)
+        # pacman reports the failure class on stderr ("could not satisfy
+        # dependencies") but names the offending dependency on stdout
+        # (":: unable to satisfy dependency 'libfoo.so=1-64' required by bar").
+        # Surface both, or the transaction failure cannot be diagnosed from logs.
+        detail = "\n".join(
+            stream.strip() for stream in (result.stderr, result.stdout) if stream and stream.strip()
+        )
+        raise SystemExit(
+            f"pacman could not resolve the {len(requested)} requested packages from "
+            f"{args.packages.name} against the synchronized repositories "
+            f"(exit status {result.returncode}):\n{detail or '<pacman printed no detail>'}"
+        )
 
     resolved: dict[str, str] = {}
     for line in result.stdout.splitlines():

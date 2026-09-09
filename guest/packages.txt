@@ -1,4 +1,12 @@
 # ARM64 transaction for the real Quattro first-boot owner-provisioning flow.
+# Hyprland is not requested here: the ABI-matched rounded-border backport is
+# built from source and registered by scripts/register-patched-hyprland.sh
+# against the aquamarine/hyprutils ABI this transaction stages. Its runtime
+# dependency closure (aquamarine, hyprcursor, hyprgraphics, hyprland-guiutils,
+# hyprwayland-scanner, hyprwire, muparser, re2, tomlplusplus, wayland-protocols,
+# xcb-util-errors) is therefore requested explicitly so the package lock covers
+# every package the patched compositor installs against.
+aquamarine
 archlinuxarm-keyring
 base
 bash-completion
@@ -22,9 +30,13 @@ gnome-keyring
 grim
 gum
 gvfs
-hyprland
+hyprcursor
+hyprgraphics
+hyprland-guiutils
 hyprpicker
 hyprsunset
+hyprwayland-scanner
+hyprwire
 imagemagick
 imv
 inotify-tools
@@ -37,6 +49,7 @@ linux-aarch64-headers
 mesa
 mkinitcpio
 mpv
+muparser
 nautilus
 neovim
 networkmanager
@@ -53,6 +66,7 @@ python
 qt6-imageformats
 qt6-wayland
 quickshell
+re2
 ripgrep
 sddm
 sed
@@ -64,6 +78,7 @@ sudo
 systemd
 systemd-resolvconf
 tmux
+tomlplusplus
 ttf-jetbrains-mono-nerd
 udiskie
 unzip
@@ -71,9 +86,11 @@ uwsm
 v4l2loopback-dkms
 vulkan-swrast
 wayland
+wayland-protocols
 wireplumber
 wl-clipboard
 woff2-font-awesome
+xcb-util-errors
 xdg-desktop-portal-gtk
 xdg-desktop-portal-hyprland
 xdg-user-dirs

@@ -429,7 +429,7 @@ def main() -> None:
         hyprland
         == {
             "version": "0.56.1",
-            "pkgrel": "3.2",
+            "pkgrel": "3.3",
             "upstreamPackageVersion": "0.56.1-3",
             "repository": "https://github.com/hyprwm/Hyprland",
             "commit": "5c9377c15f85c50648f35ca5a213754f95b93ca0",
@@ -447,23 +447,64 @@ def main() -> None:
             "license": "BSD-3-Clause",
             "issue": "https://github.com/omacom/try-omarchy/issues/5",
             "buildPackages": {
+                "aquamarine": "0.15.0-2",
                 "base-devel": "1-2",
                 "binutils": "2.46+r70+g155188ea10a7-1",
-                "cmake": "4.4.3-1",
+                "cmake": "4.4.3-2",
                 "gcc": "16.1.1+r12+g301eb08fa2c5-1",
                 "gcc-libs": "16.1.1+r12+g301eb08fa2c5-1",
                 "glibc": "2.43+r22+g8362e8ce10b2-2",
-                "hyprland": "0.56.1-3",
+                "hyprcursor": "0.1.13-7",
+                "hyprgraphics": "0.5.1-4",
                 "hyprland-protocols": "0.7.0-1",
+                "hyprlang": "0.6.8-5",
+                "hyprutils": "0.14.2-1",
+                "hyprwayland-scanner": "0.4.6-1",
+                "hyprwire": "0.3.1-3",
                 "make": "4.4.1-3",
                 "meson": "1.12.0-1",
                 "ninja": "1.13.2-3",
-                "pkgconf": "3.0.6-1",
+                "pkgconf": "3.0.7-1",
                 "xorgproto": "2025.1-1",
             },
-        }
-        and packages.get("hyprland") == hyprland["upstreamPackageVersion"],
+        },
         "rounded-border Hyprland source, toolchain, and upstream package are fully pinned",
+    )
+    # Arch Linux ARM's prebuilt Hyprland can lag its own ABI rebuilds, so the
+    # transaction never requests it: the patched build is the only Hyprland,
+    # its runtime closure is requested explicitly, and the guest's ABI set must
+    # be the exact set the builder links against.
+    hyprland_runtime_closure = {
+        "aquamarine",
+        "hyprcursor",
+        "hyprgraphics",
+        "hyprland-guiutils",
+        "hyprwayland-scanner",
+        "hyprwire",
+        "muparser",
+        "re2",
+        "tomlplusplus",
+        "wayland-protocols",
+        "xcb-util-errors",
+    }
+    hyprland_abi_set = {
+        "aquamarine",
+        "hyprcursor",
+        "hyprgraphics",
+        "hyprlang",
+        "hyprutils",
+        "hyprwayland-scanner",
+        "hyprwire",
+    }
+    check(
+        "hyprland" not in requested_packages
+        and "hyprland" not in packages
+        and hyprland_runtime_closure <= requested_packages
+        and hyprland_runtime_closure <= set(packages)
+        and all(
+            packages.get(name) == hyprland["buildPackages"].get(name) for name in hyprland_abi_set
+        ),
+        "transaction stages the patched Hyprland's dependency closure on the builder's pinned ABI set",
     )
     hyprland_patch = GUEST / hyprland["patch"]
     check(
@@ -867,7 +908,13 @@ def main() -> None:
         and "pacman -Qkk" in register_hyprland
         and "Glaze license digest mismatch" in register_hyprland
         and "LICENSE.glaze" in register_hyprland
-        and "build_package_records[@]} == 13" in register_hyprland
+        and "build_package_records[@]} == 19" in register_hyprland
+        and '-Sddw "hyprland=$upstream_package_version"' in register_hyprland
+        and "staged root already contains an unpatched Hyprland package" in register_hyprland
+        and "could not read the upstream Hyprland dependency list" in register_hyprland
+        and "could not read the built Hyprland shared-library dependencies" in register_hyprland
+        and "rewrote shared-library dependency" in register_hyprland
+        and "patched Hyprland package was not installed" in register_hyprland
         and "builder_pacman_config" in register_hyprland
         and "could not derive the Hyprland builder pacman configuration" in register_hyprland
         and 'pacman -Syy --noconfirm --config "$builder_pacman_config"' in register_hyprland
