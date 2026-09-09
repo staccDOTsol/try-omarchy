@@ -1,5 +1,5 @@
 # written by `npx openzoo chatgpt` — rerun it to refresh, edit freely otherwise
-model = "claude-opus-5"
+model = "deepseek-v4-flash"
 model_provider = "openzoo"
 
 [model_providers.openzoo]
