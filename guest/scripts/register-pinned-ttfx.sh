@@ -126,9 +126,15 @@ source_date_epoch=${metadata[20]}
 [[ $architecture == aarch64 ]] || fail "pinned ttfx component supports only aarch64"
 [[ $target == aarch64-unknown-linux-gnu ]] || fail "unexpected ttfx build target: $target"
 [[ $rust_package_version == "rust 1:1.98.1-1" ]] || fail "unexpected ttfx Rust package version"
-[[ $(pacman -Q rust) == "$rust_package_version" ]] || fail "ttfx Rust package identity mismatch"
-[[ $(rustc --version) == "$rustc_version" ]] || fail "ttfx rustc identity mismatch"
-[[ $(cargo --version) == "$cargo_version" ]] || fail "ttfx Cargo identity mismatch"
+installed_rust=$(pacman -Q rust)
+[[ $installed_rust == "$rust_package_version" ]] ||
+  fail "ttfx Rust package identity mismatch: expected '$rust_package_version', found '$installed_rust'"
+installed_rustc=$(rustc --version)
+[[ $installed_rustc == "$rustc_version" ]] ||
+  fail "ttfx rustc identity mismatch: expected '$rustc_version', found '$installed_rustc'"
+installed_cargo=$(cargo --version)
+[[ $installed_cargo == "$cargo_version" ]] ||
+  fail "ttfx Cargo identity mismatch: expected '$cargo_version', found '$installed_cargo'"
 [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "invalid ttfx version: $version"
 [[ $pkgrel == 1 ]] || fail "unexpected ttfx package release: $pkgrel"
 [[ $repository == https://github.com/omacom-io/ttfx ]] || fail "unexpected ttfx repository"
