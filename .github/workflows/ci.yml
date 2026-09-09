@@ -1,6 +1,8 @@
 name: CI
 
 on:
+  # Runnable by hand from the Actions tab, not only on a push.
+  workflow_dispatch:
   pull_request:
   push:
     branches:
