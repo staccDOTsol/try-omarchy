@@ -89,6 +89,9 @@ chmod 0755 \
   "$root/usr/local/sbin/try-omarchy-touch-id-control" \
   "$root/usr/local/sbin/try-omarchy-touch-id-enroll" \
   "$root/usr/local/lib/try-omarchy/install-vivaldi-arm64" \
+  "$root/usr/local/lib/try-omarchy/openzoo-bootstrap" \
+  "$root/usr/local/lib/try-omarchy/openzoo-first-launch" \
+  "$root/usr/local/bin/try-omarchy-chatgpt" \
   "$root/usr/lib/systemd/system-generators/try-omarchy-ssh-access"
 
 vivaldi_key=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["supplyChain"]["vivaldi"]["signingKey"])' "$spec")
@@ -126,6 +129,23 @@ shared_folder_mount_point=$(python3 -c 'import json,sys; print(json.load(open(sy
 [[ $shared_folder_mount_point == /mnt/mac ]] || fail "shared folder mount point must match the link unit"
 ln -sfn /usr/lib/systemd/user/omarchy-native-mac-share-link.service \
   "$root/etc/systemd/user/default.target.wants/omarchy-native-mac-share-link.service"
+
+# openzoo at first launch. The package set is locked, so Node and the openzoo
+# CLI arrive through a root oneshot on the first ONLINE boot (stamped under
+# /var/lib/try-omarchy, retried on a boot without network); every user session
+# then runs a localhost-only x402 proxy on :8402, and /etc/skel seeds the Codex
+# provider that points OpenAI's ChatGPT desktop app at it.
+mkdir -p "$root/etc/systemd/system/multi-user.target.wants"
+ln -sfn /usr/lib/systemd/system/try-omarchy-openzoo-bootstrap.service \
+  "$root/etc/systemd/system/multi-user.target.wants/try-omarchy-openzoo-bootstrap.service"
+ln -sfn /usr/lib/systemd/user/openzoo-proxy.service \
+  "$root/etc/systemd/user/default.target.wants/openzoo-proxy.service"
+# First login runs the same one-liner a real Omarchy box uses
+# (curl -fsSL openzoo.fun/omarchymax | bash): agent list, bar, ingest, ChatGPT
+# seed. It needs the Wayland session (notify-send, omarchy plugin add), so it
+# follows the graphical session like the clipboard bridge.
+ln -sfn /usr/lib/systemd/user/openzoo-first-launch.service \
+  "$root/etc/systemd/user/graphical-session.target.wants/openzoo-first-launch.service"
 cat "$guest_dir/fragments/hypr-monitors-arm-qemu.append.lua" >>"$root/etc/skel/.config/hypr/monitors.lua"
 
 hostname=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["guest"]["hostname"])' "$spec")

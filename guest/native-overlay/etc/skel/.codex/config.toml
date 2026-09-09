@@ -1,0 +1,10 @@
+# written by `npx openzoo chatgpt` — rerun it to refresh, edit freely otherwise
+model = "claude-opus-5"
+model_provider = "openzoo"
+
+[model_providers.openzoo]
+name = "openzoo"
+base_url = "http://localhost:8402/v1"
+wire_api = "responses"
+env_key = "OPENZOO_API_KEY"
+requires_openai_auth = false

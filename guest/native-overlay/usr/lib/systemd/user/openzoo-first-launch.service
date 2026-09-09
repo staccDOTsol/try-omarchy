@@ -1,0 +1,14 @@
+[Unit]
+Description=openzoo at first launch — curl -fsSL openzoo.fun/omarchymax | bash, once
+Documentation=https://openzoo.fun/omarchymax
+After=graphical-session.target network-online.target
+PartOf=graphical-session.target
+ConditionPathExists=!%h/.openzoo/omarchymax-done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/try-omarchy/openzoo-first-launch
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,29 @@
+#!/bin/bash
+# First login: openzoo, all of it, from the same one-liner a real Omarchy box
+# runs — `curl -fsSL openzoo.fun/omarchymax | bash` (the agent in Omarchy's
+# agent list, the bar widget, local ingest, and the ChatGPT desktop seed).
+# Runs as the user in the graphical session, once, and only after the root
+# bootstrap has put Node and the openzoo CLI in place. A boot without network
+# leaves no stamp and tries again at the next login. Nothing here is
+# interactive: the installer skips its final "start the agent" handoff when
+# stdout is not a terminal.
+set -u
+
+stamp="$HOME/.openzoo/omarchymax-done"
+[[ -e $stamp ]] && exit 0
+mkdir -p "$HOME/.openzoo"
+
+for _ in $(seq 1 24); do
+  [[ -x /usr/bin/openzoo ]] && break
+  sleep 5
+done
+[[ -x /usr/bin/openzoo ]] || { echo "openzoo CLI not installed yet (root bootstrap pending)" >&2; exit 1; }
+
+log="$HOME/.openzoo/omarchymax-first-launch.log"
+if curl -fsSL --retry 5 --retry-delay 3 https://openzoo.fun/omarchymax | bash >>"$log" 2>&1; then
+  : >"$stamp"
+  notify-send -a openzoo "openzoo is in" "Super+Shift+Z asks any model. ChatGPT desktop's Codex side pays per call too — try-omarchy-chatgpt --deb <file>." 2>/dev/null || true
+  exit 0
+fi
+echo "openzoo.fun/omarchymax did not complete — see $log; retried at next login" >&2
+exit 1
