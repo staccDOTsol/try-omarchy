@@ -1,10 +1,15 @@
 #!/bin/bash
 # OpenAI's ChatGPT desktop app on the zoo. The image cannot ship the app (it
-# is proprietary), so hand this the .deb from https://chatgpt.com/download —
-# a path or a URL — and it is unpacked under ~/.openzoo/apps/chatgpt (no dpkg
-# here) and launched with its Codex side pointed at the local x402 proxy.
+# is proprietary), so `openzoo chatgpt` fetches the official Linux build for
+# this guest's CPU on first run and unpacks it under ~/.openzoo/apps/chatgpt
+# (no dpkg here), then launches it with its Codex side pointed at the local
+# x402 proxy. No flags needed: run `try-omarchy-chatgpt` and wait.
 # Pick "sign in with API key" in the app; any key works, the zoo takes
-# payment, not keys. Every other flag is passed to `openzoo chatgpt`.
+# payment, not keys.
+#
+# --deb <file|URL> overrides the download with your own copy (from
+# https://chatgpt.com/download). Every other flag is passed to
+# `openzoo chatgpt`.
 set -euo pipefail
 
 if ! command -v openzoo >/dev/null 2>&1; then
@@ -38,8 +43,4 @@ while (($#)); do
   esac
 done
 
-case "$(uname -m)" in
-  aarch64) echo "note: this guest is arm64 — use the arm64 .deb (chatgpt_arm64.deb)" >&2 ;;
-  x86_64) echo "note: this guest is x86_64 — use the amd64 .deb (chatgpt_amd64.deb)" >&2 ;;
-esac
 exec openzoo chatgpt "${args[@]}"
