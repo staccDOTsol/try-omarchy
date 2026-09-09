@@ -277,8 +277,16 @@ fi
 [[ -s $stage/render-output.txt ]] || fail "ttfx render smoke test produced no terminal output"
 built_binary_sha256=$(sha256sum "$built_binary")
 built_binary_sha256=${built_binary_sha256%% *}
-[[ $built_binary_sha256 == "$binary_sha256" ]] ||
-  fail "ttfx reproducible binary digest mismatch: $built_binary_sha256"
+if [[ $built_binary_sha256 != "$binary_sha256" ]]; then
+  # OMARCHY_REPIN_DIGESTS is the deliberate escape hatch for the single build
+  # that follows a move in a build input: the digest a reproducible build will
+  # produce cannot be known before that build runs, so report what it made and
+  # carry on with it. Unset — every ordinary build — the mismatch stays fatal.
+  [[ ${OMARCHY_REPIN_DIGESTS:-0} == 1 ]] ||
+    fail "ttfx reproducible binary digest mismatch: $built_binary_sha256"
+  echo "REPIN supplyChain.ttfx.binarySha256 = $built_binary_sha256 (spec pins $binary_sha256)" >&2
+  binary_sha256=$built_binary_sha256
+fi
 
 install -Dm0755 "$built_binary" "$stage/usr/bin/ttfx"
 install -Dm0644 "$source_root/LICENSE" "$stage/usr/share/licenses/$package_name/LICENSE"

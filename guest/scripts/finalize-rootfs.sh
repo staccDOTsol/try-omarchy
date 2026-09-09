@@ -45,10 +45,15 @@ expected_hyprland="$(read_spec '["supplyChain"]["hyprland"]["version"]')-$(read_
   exit 1
 }
 expected_hyprland_sha256=$(read_spec '["supplyChain"]["hyprland"]["binarySha256"]')
-printf '%s  %s\n' "$expected_hyprland_sha256" /usr/bin/Hyprland | sha256sum -c - >/dev/null || {
-  echo "Rounded-border Hyprland binary digest mismatch" >&2
-  exit 1
-}
+if ! printf '%s  %s\n' "$expected_hyprland_sha256" /usr/bin/Hyprland | sha256sum -c - >/dev/null; then
+  # The registering build already reported the produced digest under
+  # OMARCHY_REPIN_DIGESTS; that one build must not die again on the same pin.
+  [[ ${OMARCHY_REPIN_DIGESTS:-0} == 1 ]] || {
+    echo "Rounded-border Hyprland binary digest mismatch" >&2
+    exit 1
+  }
+  echo "REPIN supplyChain.hyprland.binarySha256 = $(sha256sum /usr/bin/Hyprland | cut -d' ' -f1) (spec pins $expected_hyprland_sha256)" >&2
+fi
 expected_voxtype="$(read_spec '["supplyChain"]["voxtype"]["version"]')-$(read_spec '["supplyChain"]["voxtype"]["pkgrel"]')"
 [[ ! $(pacman -Qq voxtype-bin 2>/dev/null || true) ]] || {
   echo "Opt-in Voxtype must not be installed in the factory image" >&2

@@ -122,6 +122,7 @@ docker volume create --label dev.tryomarchy.role=guest-work "$work_volume" >/dev
 docker run --rm --platform linux/arm64 --privileged \
   -e OMARCHY_BUILDER_IMAGE_DIGEST="$builder_digest" \
   -e OMARCHY_PACMAN_DISABLE_SANDBOX=1 \
+  -e OMARCHY_REPIN_DIGESTS="${OMARCHY_REPIN_DIGESTS:-0}" \
   -v "$repo_dir:/workspace:ro" \
   -v "$output:/output" \
   -v "$work_volume:/work" \

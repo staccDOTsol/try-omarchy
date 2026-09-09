@@ -563,8 +563,14 @@ built_version=$(XDG_RUNTIME_DIR="$version_runtime_dir" "$built_binary" --version
 [[ $built_version == "Hyprland $version "* ]] || fail "Hyprland build reported an unexpected version"
 built_binary_sha256=$(sha256sum "$built_binary")
 built_binary_sha256=${built_binary_sha256%% *}
-[[ $built_binary_sha256 == "$binary_sha256" ]] ||
-  fail "Hyprland reproducible binary digest mismatch: $built_binary_sha256"
+if [[ $built_binary_sha256 != "$binary_sha256" ]]; then
+  # See register-pinned-ttfx.sh: opt-in, one build, to learn the digest a moved
+  # build input produces. Unset, the mismatch is still fatal.
+  [[ ${OMARCHY_REPIN_DIGESTS:-0} == 1 ]] ||
+    fail "Hyprland reproducible binary digest mismatch: $built_binary_sha256"
+  echo "REPIN supplyChain.hyprland.binarySha256 = $built_binary_sha256 (spec pins $binary_sha256)" >&2
+  binary_sha256=$built_binary_sha256
+fi
 
 python3 - "$upstream_tar" "$upstream_package_version" "$license" <<'PY' || fail "upstream Hyprland package has an unsafe member set"
 import pathlib

@@ -46,6 +46,17 @@ dependencies are rewritten from the built executable's `DT_NEEDED` entries.
 When Arch Linux ARM moves one of those libraries, move the matching
 `buildPackages` pin, the lock, and `binarySha256` together.
 
+A moved build input changes the reproducible binary, and the digest it will
+produce cannot be known until that build has run. `OMARCHY_REPIN_DIGESTS=1`
+covers exactly that one build: `register-pinned-ttfx.sh`,
+`register-patched-hyprland.sh`, and `finalize-rootfs.sh` then report the digest
+the build actually made on stderr as
+`REPIN supplyChain.<component>.binarySha256 = <digest>` and continue with it
+instead of stopping. Copy those digests into `spec.json`, `tests/verify.py`, and
+the launcher contract in `macos/run-qemu-gpu.sh`, then build again without the
+variable — unset, every mismatch is still fatal, which is the only mode a
+release build may use.
+
 When updating Hyprland, first test the unpatched package through the same
 Virtio/VirGL guest path. Remove the local patch and package hold if upstream is
 clean; otherwise rebase the patch and update every source, patch, toolchain,
