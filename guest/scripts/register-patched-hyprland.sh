@@ -817,8 +817,14 @@ if ! integrity_report=$(pacman --config "$pacman_config" --root "$root" \
   # -Qkk names the path and the keyword that disagreed; without them the failure
   # says only that something did, which is not enough to fix a packaging bug.
   printf '%s\n' "$integrity_report" >&2
+  # pacman prints "warning: <package>: <path> (<keyword> mismatch)". The old
+  # expression took everything after the FIRST ": " as the path, so the path it
+  # handed to stat was "hyprland: /work/rootfs.X/usr" — a name that does not
+  # exist — and both stat lines came back as "cannot statx", which is exactly
+  # the blindness this block exists to cure. MEASURED 2026-09-09, run 8. The
+  # path is the absolute name after the LAST ": ", so anchor on ": /" instead.
   printf '%s\n' "$integrity_report" |
-    sed -n 's/^[^:]*: \(.*\) (\(UID\|GID\|Permissions\|Modification time\|Size\|MD5\|SHA256\) .*/\1/p' |
+    sed -n 's/^.*: \(\/[^ ]*\) (\(UID\|GID\|Permissions\|Modification time\|Size\|MD5\|SHA256\) .*/\1/p' |
     sort -u |
     while IFS= read -r mismatched; do
       stat -c 'installed %n uid=%u gid=%g mode=%a' "$mismatched" >&2 || true
